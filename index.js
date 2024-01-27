@@ -54,7 +54,7 @@ exports.handler = async (event, context) => {
     TableName: process.env.dynamoTable,
     
     Item: {
-      Email: '${Message.userEmail}',
+      Email: '${Message.email}',
       Repository: '${Message.submission_url}',
       Timestamp: new Date().toISOString(),
     },
@@ -111,6 +111,10 @@ const axios = require('axios');
 const { Storage } = require('@google-cloud/storage');
 const mailgun = require('mailgun-js');
 const { v4: uuidv4 } = require("uuid");
+const dotenv = require('dotenv');
+
+
+dotenv.config();
 
 // Initialize AWS SDK
 const s3 = new AWS.S3();
@@ -134,43 +138,45 @@ exports.handler = async (event) => {
         // Extract SNS message
         const Message = JSON.parse(event.Records[0].Sns.Message);
         console.log("SNS Message:", Message);
-        console.log("Email:",Message.userEmail);
-        console.log("Submission URL:- ", Message.submissionUrl);
+        console.log("Email:",Message.email);
+        console.log("Submission URL:- ", Message.submission_url);
+        console.log("Assignment id:- ", Message.assignment_id);
 
         // GitHub release details
-        const githubRepo = Message.submissionUrl;
+        const githubRepo = Message.submission_url;
         console.log("git hub repo", githubRepo);
         //const releaseTag = Message.releaseTag;
 
+
         // Google Cloud Storage details
-        //const bucketName = Message.bucketName;
+       
         const bucket = process.env.bucket;
         console.log("bucket",bucket);
         //const objectName = githubRepo;
-        const objectName = `${Message.submisionId}`;
-        console.log("objectName", objectName);
+    //    const objectName = `${Message.assignment_id}`;
+        console.log("objectName", Message.assignment_id);
 
 
         // DynamoDB details
-        const dynamoDbTable = process.env.DYNAMODB;
+        // const dynamoDBTable = process.env.dynamoDBTable;
 
 
         // Download release from GitHub
-        const githubReleaseUrl = githubRepo;
-        console.log("githubReleaseUrl",githubReleaseUrl);
+     //   const githubReleaseUrl = githubRepo;
+        console.log("githubReleaseUrl",Message.submission_url);
 
-        const response = await axios.get(githubReleaseUrl, { responseType: 'arraybuffer' });
+        const response = await axios.get(Message.submission_url, { responseType: 'arraybuffer' });
         console.log("response:- " ,response)
         
         // Upload release to Google Cloud Storage
-        await storage.bucket(bucket).file(objectName).save(response.data);
+        await storage.bucket(bucket).file(Message.assignment_id).save(response.data);
 
         // Email user the status of download (replace this with your email sending logic)
-        const emailStatus = await sendEmail(Message.userEmail, "Submision success", "Release downloaded successfully!",`gs://${bucket}/${objectName}`);
+        const emailStatus = await sendEmail(Message.email, "Submision success", "Release downloaded successfully!",`gs://${bucket}/${Message.assignment_id}`);
         console.log("Email Status:- ",emailStatus);
 
         // Track emails sent in DynamoDB
-        await trackEmailInDynamoDB(Message.userEmail, Message.submissionUrl,emailStatus);
+        await trackEmailInDynamoDB(Message.email, Message.submission_url,emailStatus);
 
         return {
 
@@ -191,8 +197,9 @@ exports.handler = async (event) => {
 
 async function sendEmail(to, subject, message , gcsBucketPath) {
     const mailgun_api_key = process.env.mailgun_api_key;
+    console.log("mailgun_api_key",process.env.mailgun_api_key) ;
     const domainName = process.env.domainName;
-    const mg = mailgun({ mailgun_api_key, domainName });
+    const mg = mailgun({apiKey: process.env.mailgun_api_key,domain:"networkstructures.pro"});
 
    // const from = `noreply@${domainName}`;
     const from = "helpdesk@networkstructures.pro";
@@ -228,11 +235,11 @@ async function trackEmailInDynamoDB(userEmail, fileName, isSuccess) {
     const params = {
       TableName: tableName,
       Item: {
-        Id: uniqueId,
+        id: uniqueId,
         userEmail: userEmail,
         FileName: fileName,
-        Timestamp: new Date().toISOString(),
-        Status: status,
+        timestamp: new Date().toISOString(),
+        status: status,
       },
     };
    
